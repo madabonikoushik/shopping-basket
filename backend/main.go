@@ -2,16 +2,16 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
+
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
-
 
 type User struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
@@ -53,6 +53,7 @@ type CartWithItems struct {
 	Cart      Cart       `json:"cart"`
 	CartItems []CartItem `json:"cart_items"`
 }
+
 type OrderItemDTO struct {
 	ItemID uint   `json:"item_id"`
 	Name   string `json:"name"`
@@ -66,7 +67,6 @@ type OrderDTO struct {
 	Items     []OrderItemDTO `json:"items"`
 }
 
-
 var db *gorm.DB
 
 func initDB() {
@@ -75,6 +75,7 @@ func initDB() {
 		panic(err)
 	}
 	db = database
+
 	if err := db.AutoMigrate(&User{}, &Item{}, &Cart{}, &CartItem{}, &Order{}); err != nil {
 		panic(err)
 	}
@@ -93,16 +94,31 @@ func initDB() {
 // ---------------- Middleware ----------------
 
 func corsMiddleware() gin.HandlerFunc {
-  return func(c *gin.Context) {
-    c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
-    c.Header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS")
-    c.Header("Access-Control-Allow-Headers", "Origin, Authorization, Content-Type")
-    if c.Request.Method == http.MethodOptions {
-      c.AbortWithStatus(204)
-      return
-    }
-    c.Next()
-  }
+	allowedOrigins := map[string]bool{
+		"http://localhost:3000":                      true,
+		"https://flourishing-flan-d0885b.netlify.app": true, // ✅ your Netlify URL (no trailing slash)
+	}
+
+	return func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+
+		if allowedOrigins[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+			c.Header("Access-Control-Allow-Credentials", "true")
+		}
+
+		// ✅ include DELETE + OPTIONS for preflight
+		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, Origin, Accept")
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func authMiddleware() gin.HandlerFunc {
@@ -113,13 +129,15 @@ func authMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		token := strings.TrimPrefix(auth, "Bearer ")
+
+		token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 		var user User
 		if err := db.Where("token = ?", token).First(&user).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			c.Abort()
 			return
 		}
+
 		c.Set("user", user)
 		c.Next()
 	}
@@ -132,17 +150,28 @@ func postUsers(c *gin.Context) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil || body.Username == "" || body.Password == "" {
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	body.Username = strings.TrimSpace(body.Username)
+	body.Password = strings.TrimSpace(body.Password)
+
+	if body.Username == "" || body.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "username and password required"})
 		return
 	}
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	user := User{Username: body.Username, Password: string(hash)}
+
 	if err := db.Create(&user).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "username already exists"})
 		return
 	}
+
 	c.JSON(http.StatusCreated, gin.H{"id": user.ID, "username": user.Username, "created_at": user.CreatedAt})
 }
 
@@ -157,22 +186,26 @@ func postLogin(c *gin.Context) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
+
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
+
+	body.Username = strings.TrimSpace(body.Username)
+	body.Password = strings.TrimSpace(body.Password)
 
 	var user User
 	if err := db.Where("username = ?", body.Username).First(&user).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid username/password"})
 		return
 	}
+
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid username/password"})
 		return
 	}
 
-	// single active token per user (overwrite)
 	token := uuid.NewString()
 	db.Model(&user).Update("token", token)
 
@@ -184,13 +217,23 @@ func postItems(c *gin.Context) {
 		Name   string `json:"name"`
 		Status string `json:"status"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil || body.Name == "" {
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	body.Name = strings.TrimSpace(body.Name)
+	body.Status = strings.TrimSpace(body.Status)
+
+	if body.Name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name required"})
 		return
 	}
 	if body.Status == "" {
 		body.Status = "ACTIVE"
 	}
+
 	item := Item{Name: body.Name, Status: body.Status}
 	db.Create(&item)
 	c.JSON(http.StatusCreated, item)
@@ -205,6 +248,7 @@ func getItems(c *gin.Context) {
 func ensureActiveCart(userID uint) (Cart, error) {
 	var cart Cart
 	err := db.Where("user_id = ?", userID).First(&cart).Error
+
 	if err == nil {
 		if cart.Status == "ORDERED" {
 			cart.Status = "ACTIVE"
@@ -229,6 +273,7 @@ func postCarts(c *gin.Context) {
 		ItemID  uint   `json:"itemId"`
 		ItemIDs []uint `json:"itemIds"`
 	}
+
 	if err := c.ShouldBindJSON(&body); err != nil || (body.ItemID == 0 && len(body.ItemIDs) == 0) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "itemId or itemIds required"})
 		return
@@ -251,12 +296,12 @@ func postCarts(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid item id"})
 			return
 		}
-		var existing CartItem
-err := db.Where("cart_id = ? AND item_id = ?", cart.ID, id).First(&existing).Error
-if err != nil {
-  db.Create(&CartItem{CartID: cart.ID, ItemID: id})
-}
 
+		var existing CartItem
+		err := db.Where("cart_id = ? AND item_id = ?", cart.ID, id).First(&existing).Error
+		if err != nil {
+			db.Create(&CartItem{CartID: cart.ID, ItemID: id})
+		}
 	}
 
 	var cartItems []CartItem
@@ -269,43 +314,20 @@ func getCarts(c *gin.Context) {
 	db.Find(&carts)
 	c.JSON(http.StatusOK, carts)
 }
-func getMyOrders(c *gin.Context) {
+
+func getMyCart(c *gin.Context) {
 	u := c.MustGet("user").(User)
 
-	var orders []Order
-	db.Where("user_id = ?", u.ID).Order("id desc").Find(&orders)
-
-	result := make([]OrderDTO, 0, len(orders))
-
-	for _, o := range orders {
-	
-		var cartItems []CartItem
-		db.Where("cart_id = ?", o.CartID).Find(&cartItems)
-
-		qtyMap := map[uint]int{}
-		for _, ci := range cartItems {
-			qtyMap[ci.ItemID]++
-		}
-
-		items := make([]OrderItemDTO, 0, len(qtyMap))
-		for itemID, qty := range qtyMap {
-			var it Item
-			name := "Unknown"
-			if err := db.First(&it, itemID).Error; err == nil {
-				name = it.Name
-			}
-			items = append(items, OrderItemDTO{ItemID: itemID, Name: name, Qty: qty})
-		}
-
-		result = append(result, OrderDTO{
-			ID:        o.ID,
-			CreatedAt: o.CreatedAt,
-			Status:    "PLACED",
-			Items:     items,
-		})
+	cart, err := ensureActiveCart(u.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get cart"})
+		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	var cartItems []CartItem
+	db.Where("cart_id = ?", cart.ID).Find(&cartItems)
+
+	c.JSON(http.StatusOK, CartWithItems{Cart: cart, CartItems: cartItems})
 }
 
 func postOrders(c *gin.Context) {
@@ -348,21 +370,47 @@ func postOrders(c *gin.Context) {
 }
 
 func getOrders(c *gin.Context) {
-	auth := c.GetHeader("Authorization")
-	if auth != "" && strings.HasPrefix(auth, "Bearer ") {
-		token := strings.TrimPrefix(auth, "Bearer ")
-		var user User
-		if err := db.Where("token = ?", token).First(&user).Error; err == nil {
-			var orders []Order
-			db.Where("user_id = ?", user.ID).Find(&orders)
-			c.JSON(http.StatusOK, orders)
-			return
-		}
-	}
-
 	var orders []Order
 	db.Find(&orders)
 	c.JSON(http.StatusOK, orders)
+}
+
+func getMyOrders(c *gin.Context) {
+	u := c.MustGet("user").(User)
+
+	var orders []Order
+	db.Where("user_id = ?", u.ID).Order("id desc").Find(&orders)
+
+	result := make([]OrderDTO, 0, len(orders))
+
+	for _, o := range orders {
+		var cartItems []CartItem
+		db.Where("cart_id = ?", o.CartID).Find(&cartItems)
+
+		qtyMap := map[uint]int{}
+		for _, ci := range cartItems {
+			qtyMap[ci.ItemID]++
+		}
+
+		items := make([]OrderItemDTO, 0, len(qtyMap))
+		for itemID, qty := range qtyMap {
+			var it Item
+			name := "Unknown"
+			if err := db.First(&it, itemID).Error; err == nil {
+				name = it.Name
+			}
+			items = append(items, OrderItemDTO{ItemID: itemID, Name: name, Qty: qty})
+		}
+
+		result = append(result, OrderDTO{
+			ID:        o.ID,
+			CreatedAt: o.CreatedAt,
+			Status:    "PLACED",
+			Items:     items,
+		})
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 func deleteCartItem(c *gin.Context) {
@@ -396,27 +444,12 @@ func deleteCartItem(c *gin.Context) {
 	db.Where("cart_id = ?", cart.ID).Find(&cartItems)
 	c.JSON(http.StatusOK, CartWithItems{Cart: cart, CartItems: cartItems})
 }
-func getMyCart(c *gin.Context) {
-	u := c.MustGet("user").(User)
-
-	cart, err := ensureActiveCart(u.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get cart"})
-		return
-	}
-
-	var cartItems []CartItem
-	db.Where("cart_id = ?", cart.ID).Find(&cartItems)
-
-	c.JSON(http.StatusOK, CartWithItems{Cart: cart, CartItems: cartItems})
-}
-
-
 
 func main() {
 	initDB()
+
 	r := gin.Default()
-	r.Use(corsMiddleware())
+	r.Use(corsMiddleware()) // ✅ MUST be before routes
 
 	r.POST("/users", postUsers)
 	r.GET("/users", getUsers)
@@ -427,13 +460,13 @@ func main() {
 
 	r.POST("/carts", authMiddleware(), postCarts)
 	r.GET("/carts", getCarts)
-   r.GET("/carts/me", authMiddleware(), getMyCart)
-    r.GET("/orders/me", authMiddleware(), getMyOrders)
+	r.GET("/carts/me", authMiddleware(), getMyCart)
 
 	r.POST("/orders", authMiddleware(), postOrders)
 	r.GET("/orders", getOrders)
-r.DELETE("/carts/items/:itemId", authMiddleware(), deleteCartItem)
+	r.GET("/orders/me", authMiddleware(), getMyOrders)
 
+	r.DELETE("/carts/items/:itemId", authMiddleware(), deleteCartItem)
 
 	r.Run(":8080")
 }
