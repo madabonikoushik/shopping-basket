@@ -95,8 +95,8 @@ func initDB() {
 
 func corsMiddleware() gin.HandlerFunc {
 	allowedOrigins := map[string]bool{
-		"http://localhost:3000":                      true,
-		"https://flourishing-flan-d0885b.netlify.app": true, // ✅ your Netlify URL (no trailing slash)
+		"http://localhost:3000":                       true,
+		"https://flourishing-flan-d0885b.netlify.app": true, // ✅ Netlify URL (no trailing slash)
 	}
 
 	return func(c *gin.Context) {
@@ -108,7 +108,6 @@ func corsMiddleware() gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Credentials", "true")
 		}
 
-		// ✅ include DELETE + OPTIONS for preflight
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, Origin, Accept")
 
@@ -326,7 +325,6 @@ func getMyCart(c *gin.Context) {
 
 	var cartItems []CartItem
 	db.Where("cart_id = ?", cart.ID).Find(&cartItems)
-
 	c.JSON(http.StatusOK, CartWithItems{Cart: cart, CartItems: cartItems})
 }
 
@@ -369,12 +367,17 @@ func postOrders(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"orderId": order.ID})
 }
 
+// ✅ FIXED: /orders should NOT be public.
+// This returns only logged-in user's raw orders list.
 func getOrders(c *gin.Context) {
+	u := c.MustGet("user").(User)
+
 	var orders []Order
-	db.Find(&orders)
+	db.Where("user_id = ?", u.ID).Order("id desc").Find(&orders)
 	c.JSON(http.StatusOK, orders)
 }
 
+// ✅ This returns my orders with item names + qty (DTO)
 func getMyOrders(c *gin.Context) {
 	u := c.MustGet("user").(User)
 
@@ -463,7 +466,9 @@ func main() {
 	r.GET("/carts/me", authMiddleware(), getMyCart)
 
 	r.POST("/orders", authMiddleware(), postOrders)
-	r.GET("/orders", getOrders)
+
+	// ✅ IMPORTANT: protect /orders so it never shows global history
+	r.GET("/orders", authMiddleware(), getOrders)
 	r.GET("/orders/me", authMiddleware(), getMyOrders)
 
 	r.DELETE("/carts/items/:itemId", authMiddleware(), deleteCartItem)
