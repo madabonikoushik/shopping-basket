@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { api } from "./api";
+import { api, setAuthToken } from "./api";
 
 export default function LoginPage({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -20,7 +20,6 @@ export default function LoginPage({ onLogin }) {
   };
 
   const signup = async (u, p) => {
- 
     await api.post("/users", {
       username: clean(u),
       password: clean(p),
@@ -42,17 +41,18 @@ export default function LoginPage({ onLogin }) {
     try {
       setLoading(true);
 
+      // If signup mode -> create user first
       if (mode === "signup") {
-      
         await signup(u, p);
-      
-        const token = await login(u, p);
-        onLogin(token);
-        return;
       }
 
-  
+      // Then login (works for both login + signup flow)
       const token = await login(u, p);
+
+      // ✅ persist + attach token for future API calls
+      localStorage.setItem("token", token);
+      setAuthToken(token);
+
       onLogin(token);
     } catch (err) {
       const msg =
@@ -99,7 +99,12 @@ export default function LoginPage({ onLogin }) {
     h1: { margin: 0, fontSize: 22, fontWeight: 900, color: "#111827" },
     sub: { margin: "4px 0 0 0", color: "#6b7280", fontSize: 13 },
 
-    label: { fontSize: 12, fontWeight: 900, color: "#374151", marginBottom: 6 },
+    label: {
+      fontSize: 12,
+      fontWeight: 900,
+      color: "#374151",
+      marginBottom: 6,
+    },
     input: {
       width: "100%",
       padding: 12,
@@ -179,7 +184,9 @@ export default function LoginPage({ onLogin }) {
           <div>
             <p style={styles.h1}>Welcome back</p>
             <p style={styles.sub}>
-              {mode === "signup" ? "Create your account to continue" : "Login to continue"}
+              {mode === "signup"
+                ? "Create your account to continue"
+                : "Login to continue"}
             </p>
 
             <div style={styles.pillRow}>
@@ -251,7 +258,6 @@ export default function LoginPage({ onLogin }) {
                 : "Login"}
             </button>
 
-          
             <button
               type="button"
               onClick={() => {
