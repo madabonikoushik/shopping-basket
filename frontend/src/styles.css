@@ -1,0 +1,57 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+.container {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* Cards */
+.card {
+  background: #fff;
+  border: 1px solid #eef2ff;
+  border-radius: 16px;
+  box-shadow: 0 14px 30px rgba(17,24,39,0.06);
+}
+
+/* Header layout */
+.headerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;           /* ✅ allows wrapping on small screens */
+}
+
+.actionsRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;           /* ✅ buttons wrap instead of stacking weirdly */
+  justify-content: flex-end;
+}
+
+/* Main layout: mobile-first (1 column) */
+.mainGrid {
+  display: grid;
+  grid-template-columns: 1fr; /* ✅ default stack */
+  gap: 16px;
+}
+
+/* Items grid */
+.itemsGrid {
+  display: grid;
+  grid-template-columns: 1fr; /* ✅ default 1 column on mobile */
+  gap: 12px;
+}
+
+/* Tablets: make items grid 2 columns */
+@media (min-width: 600px) {
+  .itemsGrid { grid-template-columns: 1fr 1fr; }
+}
+
+/* Desktop: show main as 2 columns */
+@media (min-width: 900px) {
+  .mainGrid { grid-template-columns: 2fr 1fr; }
+}
