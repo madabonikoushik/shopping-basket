@@ -1,6 +1,7 @@
 module shopping-cart
 
-go 1.25.7
+go 1.25
+
 
 require (
 	github.com/gin-gonic/gin v1.11.0
