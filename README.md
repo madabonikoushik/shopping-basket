@@ -10,7 +10,7 @@ A simple full-stack **Shopping Cart / Basket** app:
 
 Live Frontend (Netlify): https://flourishing-flan-d0885b.netlify.app/  
 Live Backend (Render): https://shopping-basket-5czp.onrender.com
-
+<img width="1888" height="873" alt="Image" src="https://github.com/user-attachments/assets/849ecd6b-01fd-4dcc-8e61-0b428a671c62" />
 ---
 
 ## Tech Stack
