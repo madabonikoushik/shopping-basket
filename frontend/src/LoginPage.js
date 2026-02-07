@@ -6,10 +6,15 @@ export default function LoginPage({ onLogin }) {
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState("login"); // "login" | "signup"
   const [error, setError] = useState("");
 
   const clean = (s) => (s || "").trim();
+
+  const clearSession = () => {
+    localStorage.removeItem("token");
+    setAuthToken(null); // ✅ remove Authorization header from axios
+  };
 
   const login = async (u, p) => {
     const res = await api.post("/users/login", {
@@ -30,6 +35,9 @@ export default function LoginPage({ onLogin }) {
     e.preventDefault();
     setError("");
 
+    // ✅ IMPORTANT: always start fresh (prevents old-user token issue)
+    clearSession();
+
     const u = clean(username);
     const p = clean(password);
 
@@ -41,15 +49,13 @@ export default function LoginPage({ onLogin }) {
     try {
       setLoading(true);
 
-      // If signup mode -> create user first
       if (mode === "signup") {
         await signup(u, p);
       }
 
-      // Then login (works for both login + signup flow)
       const token = await login(u, p);
 
-      // ✅ persist + attach token for future API calls
+      // ✅ store + attach token for all next requests
       localStorage.setItem("token", token);
       setAuthToken(token);
 
@@ -99,12 +105,7 @@ export default function LoginPage({ onLogin }) {
     h1: { margin: 0, fontSize: 22, fontWeight: 900, color: "#111827" },
     sub: { margin: "4px 0 0 0", color: "#6b7280", fontSize: 13 },
 
-    label: {
-      fontSize: 12,
-      fontWeight: 900,
-      color: "#374151",
-      marginBottom: 6,
-    },
+    label: { fontSize: 12, fontWeight: 900, color: "#374151", marginBottom: 6 },
     input: {
       width: "100%",
       padding: 12,
@@ -193,6 +194,7 @@ export default function LoginPage({ onLogin }) {
               <button
                 type="button"
                 onClick={() => {
+                  clearSession(); // ✅ clear old token when switching
                   setMode("login");
                   setError("");
                 }}
@@ -200,9 +202,11 @@ export default function LoginPage({ onLogin }) {
               >
                 Login
               </button>
+
               <button
                 type="button"
                 onClick={() => {
+                  clearSession(); // ✅ clear old token when switching
                   setMode("signup");
                   setError("");
                 }}
@@ -261,6 +265,7 @@ export default function LoginPage({ onLogin }) {
             <button
               type="button"
               onClick={() => {
+                clearSession(); // ✅ clear old token when toggling
                 setMode(mode === "login" ? "signup" : "login");
                 setError("");
               }}
